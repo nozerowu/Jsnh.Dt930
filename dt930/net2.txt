@@ -1,0 +1,75 @@
+#include "cu_multi.h"
+#inc#include \<stdio.h\>
+#include \<stdlib.h\>
+#include \<itron.h\>
+#include \<string.h\>
+#include \<CMNDEF.H\>
+#include \<machine.h\>
+#include \<bios1mac.h\>
+#include "casio.h"
+
+void ap_start ( void );
+void main_menu(void);
+void ap_start ( void )
+{
+SysInit(0);
+main_menu();
+}
+
+void main_menu(void)
+{ char kind; 
+
+while(1)
+{ cls();
+Dsp_str("数据采集系统",3,4);
+Dsp_str("V1.0",5,8);
+kind=getkey();
+if(kind==ENT)
+{ show();
+/* break;*/
+}
+}
+} 
+void rk(void)
+{ char sptm[31],data[40],rec[40],num[9];
+char kind;
+int ret,ret1,ll,ret2;
+long fpos,lpos,mpos;
+
+
+while(1)
+{ 
+memset(sptm,0x00,sizeof(sptm));
+memset(num,0x00,sizeof(num));
+
+cls();
+Dsp_str("===入库===",1,5);
+Dsp_str("请扫描条码",3,0);
+Dsp_str("条码:",5,0);
+
+ret=read_s(5,6,0,sptm,30,NONE);
+if(ret==CLS)return;
+if(strlen(sptm)==0) continue;
+if(strlen(sptm)<30)space_str(sptm,30);
+Dsp_str(sptm,5,6);
+
+Dsp_str("数量:",9,0);
+
+ret=read_s(9,6,0,num,8,NONE);
+if(ret==CLS)return;
+if(strlen(num)<8)space_str(num,8);
+Dsp_str(num,9,6);
+
+memset(data,0x00,sizeof(data));
+memcpy(data,sptm,30);
+memcpy(data+30,num,8);
+
+data[38]=0x0d;
+data[39]=0x0a;
+
+dat_F_Write("rk.txt",1,0,data,40);
+
+
+}
+
+}

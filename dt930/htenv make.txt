@@ -1,0 +1,183 @@
+#include    <stdio.h> 
+#include    <stdlib.h> 
+#include    "itron.h" 
+#include    "cmndef.h" 
+#include    "bios1mac.h" 
+#define     WAIT            {while ((key_check()) == 0xFFFFFFFF); key_clear();} 
+#define     DT930 /*如要在DT900上运行，请注释本行*/ 
+#ifdef        DT930 
+#define     FONT_FILE       "a:\\font6sk.fon" 
+#define     FONT_BAK       "b:\\font6sk.fon" 
+#else 
+#define     FONT_FILE       "a:\\font6sl.fon" 
+#define     FONT_BAK       "b:\\font6sl.fon" 
+#endif 
+/* 
+显示中英文字串。先要用kj.exe转换。 
+这是在网上找到的一段代码，感谢网友们的分享精神。 
+*/ 
+int cputstr(int attrib , unsigned char *string) 
+{ 
+    int i; 
+    unsigned char strtemp[67],ss0,ss1; 
+    for(i=0;i<66;i+=2) 
+    { 
+        if(string[i]==0) 
+        { 
+            break; 
+        } 
+        else if(string[i+1]==0) 
+        {   
+            strtemp[i]=string[i]; 
+            i++; 
+            break; 
+        } 
+        if(string[i]<0x80) 
+        { 
+            strtemp[i]=string[i]; 
+            if(string[i+1]<0x80) 
+            { 
+                strtemp[i+1]=string[i+1]; 
+                continue; 
+            } 
+            else 
+                i++; 
+        } 
+        if(string[i]==0xa3) 
+        { 
+            strtemp[i]=0xe8; 
+            strtemp[i+1]=string[i+1]-0xa1+0x40+95; 
+        } 
+        else 
+        { 
+            ss0=string[i]-0xb0; 
+            ss1=string[i+1]-0xa1+0x40; 
+            if (ss0<8) 
+            { 
+                strtemp[i]=(ss0/2)+0x81; 
+                if(ss0%2) 
+                { 
+                    strtemp[i+1]=ss1+95; 
+                } 
+                else 
+                { 
+                    if(ss1>0x7e) 
+                        ss1++; 
+                    strtemp[i+1]=ss1; 
+                } 
+            } 
+            else if(ss0<0x37) 
+            { 
+                strtemp[i]=((ss0+1)/2)+0x84; 
+                if((ss0+1)%2) 
+                { 
+                    strtemp[i+1]=ss1+95; 
+                } 
+                else 
+                { 
+                    if(ss1>0x7e) 
+                        ss1++; 
+                    strtemp[i+1]=ss1; 
+                } 
+            } 
+            else 
+            { 
+                ss0=ss0-0x37; 
+                strtemp[i]=(ss0/2)+0xe0; 
+                if(ss0%2) 
+                { 
+                    strtemp[i+1]=ss1+95; 
+                } 
+                else 
+                { 
+                    if(ss1>0x7e) 
+                        ss1++; 
+                    strtemp[i+1]=ss1; 
+                } 
+            } 
+        } 
+    } 
+    strtemp[i]=0; 
+    lcd_csr_set( LCD_CSR_OFF ); 
+    lcd_string(LCD_ANK_STANDARD,attrib,(UB*)strtemp,LCD_LF_OFF); 
+    return(0);  
+} 
+/*判断文件是否存在*/ 
+int FileExists(const char *File) 
+{ 
+    FILE *fp; 
+    fp = fopen(File , "r"); 
+    if (fp) 
+    { 
+        fclose(fp); 
+        return 1; 
+    } 
+    else 
+    { 
+        return 0; 
+    } 
+} 
+/*用Sour指定的文件覆盖Dest指定的文件*/ 
+int CoverFile(const char *Dest , const char *Sour) 
+{ 
+    FILE *fpSour , *fpDest; 
+    char buf[1000]; 
+    int n; 
+    fpSour = fopen(Sour , "rb"); 
+    fpDest = fopen(Dest , "wb"); 
+    if (fpSour && fpDest) 
+    { 
+        n = fread(buf , sizeof(buf[0]) , sizeof(buf) , fpSour); 
+        while (n > 0) 
+        { 
+            fwrite(buf , sizeof(buf[0]) , n , fpDest); 
+            n = fread(buf , sizeof(buf[0]) , sizeof(buf) , fpSour); 
+        } 
+        fclose(fpSour); 
+        fclose(fpDest); 
+        return 1; 
+    } 
+    else 
+    { 
+        fclose(fpSour); 
+        fclose(fpDest); 
+        return 0; 
+    } 
+} 
+/*程序从这里开始执行，相当于命令行程序的main()或Windows程序的WinMain()*/ 
+void ap_start( void ) 
+{    
+    ER Ercd; 
+    DAT_DSP_STR InitSettings, DisplaySettings; 
+    Ercd = dat_system(SYSD_FNC_READ, SYSD_DSP, &InitSettings); 
+    DisplaySettings = InitSettings; 
+    DisplaySettings.font_md = FONT6_SET; 
+    Ercd = dat_system(SYSD_FNC_WRITE, SYSD_DSP, &DisplaySettings); 
+    lcd_csr_put(3 , 0); 
+    lcd_string(LCD_ANK_STANDARD , LCD_ATTR_NORMAL , (UB*)"Preparing Font..." , LCD_LF_OFF); 
+    if (FileExists(FONT_FILE) || CoverFile(FONT_FILE,FONT_BAK)) /*检查A盘的字体文件，如果丢失从B盘复制过来*/ 
+    { 
+        lcd_usrfont(LCD_K6_FILE , FONT_FILE); /*使用A盘的字体文件，加快显示速度。记得格式化为DT700格式*/ 
+    } 
+    else 
+    { 
+        lcd_csr_put(5 , 0); 
+        lcd_string(LCD_ANK_STANDARD , LCD_ATTR_NORMAL , (UB*)"Font File Missing!!!" , LCD_LF_OFF); 
+        WAIT; /*等待按任意键*/ 
+        exit(0); 
+    } 
+    lcd_csr_put(1 , 0); 
+    cputstr(LCD_ATTR_NORMAL , (UB*)"壹贰叁肆伍陆柒捌玖拾"); /*标准中文*/ 
+    lcd_csr_put(3 , 0); 
+    cputstr(LCD_ATTR_WIDTH , (UB*)"壹贰叁肆伍陆柒捌玖拾"); /*加粗中文*/ 
+    lcd_csr_put(5 , 0); 
+    cputstr(LCD_ATTR_REVERS , (UB*)"壹贰叁肆伍陆柒捌玖拾"); /*反显中文*/ 
+    lcd_csr_put(7 , 0); 
+    cputstr(LCD_ATTR_DOUBLE , (UB*)"壹贰叁肆伍"); /*加宽中文*/ 
+    lcd_csr_put(8 , 0); 
+    lcd_string(LCD_ANK_LIGHT , LCD_ATTR_NORMAL  , (UB*)"12345678901234567890" , LCD_LF_OFF); /*半高英文*/ 
+    lcd_csr_put(9 , 0); 
+    lcd_string(LCD_ANK_LIGHT , LCD_ATTR_DOUBLE  , (UB*)"1234567890" , LCD_LF_OFF); /*半高加宽英文*/ 
+    /*lcd_string(LCD_ANK_LIGHT , LCD_ATTR_DOUBLE | LCD_ATTR_REVERS , (UB*)"1234567890" , LCD_LF_OFF);*/ /*叠加两种属性，半高反显加宽英文*/ 
+    WAIT; /*等待按任意键*/ 
+} 

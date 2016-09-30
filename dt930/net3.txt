@@ -1,0 +1,2550 @@
+include <stdio.h>  
+
+  
+#include <string.h>  
+  
+#include <stdlib.h>  
+  
+         
+  
+#include "itron.h"  
+  
+#include "cmndef.h"  
+  
+#include "bios1mac.h"  
+  
+#include  "COM_APLM.H"  
+  
+#include "clce800.h"  
+  
+  
+  
+/* 定义的功能键值*/  
+  
+#define     BS_KEY      8  
+  
+#define     CLR_KEY     12  
+  
+#define     ENT_KEY     13  
+  
+#define     F1_KEY      45  
+  
+#define     F2_KEY      29  
+  
+#define     F3_KEY      28  
+  
+#define     F4_KEY      16  
+  
+#define     F5_KEY      32  
+  
+#define     F6_KEY      26  
+  
+#define     F7_KEY      27  
+  
+  
+  
+#define     ENTERNEWLINE        "/x0d/x0a"  
+  
+  
+  
+#define     PASSFILE    "pass.txt"  
+  
+  
+  
+/* 对文件操作的宏定义 */  
+  
+#define     E_NOFILE        1   /* 没有这个文件 */  
+  
+#define     E_NOCOM         2   /* COM打开错误 */  
+  
+#define     E_NOOPEN        3   /* 文件打开错误 */  
+  
+#define     E_PWERR         4   /* 密码错误 */  
+  
+/*  */  
+  
+#define     COM_OPEN_ERR    1   /* COM口无法打开 */  
+  
+#define     FILE_SEND_ERR   2   /* 文件发送失败 */  
+  
+#define     FILE_REC_ERR    3   /* 文件接收失败 */  
+  
+  
+  
+#define     E_NOFIND        1  
+  
+  
+  
+H COM = COM0;  
+  
+DAT_PWR_STR pwr_str;        /* 这个定义为全局变量 */  
+  
+CU_GRAPHSET tfGraphSet =  
+  
+{  
+  
+    CU_GRAPH_ON_1,  
+  
+    5,  
+  
+    1,  
+  
+    CU_GRAPH_NM_FILE,  
+  
+    3  
+  
+};  
+  
+  
+  
+/* 函数声明区 */  
+  
+int CheckSN(void);  
+  
+void display(B *DspStrin, H x, H y);        /* 正常显示 */  
+  
+void display2(B *DspString, H x, H y);      /*  */  
+  
+void display3(B *DspString, H x, H y);      /* 粗体显示 */  
+  
+/*int getkey(void); */                      /* 获得一个键 */  
+  
+int getstring(int X, int Y, int iMix, int iMax, char *string);  
+  
+int GetInt(int x, int y, int len, char *intstr, int type, int *iIsAdd);/*得到一个整数*/  
+  
+int GetDouble(int x, int y, int len, char *doustr, int type, int *IsAdd);/*得到一个实数*/  
+  
+void AddSpace(char *sStr, int iStrLen);  
+  
+void DecSpace(char *sStr, int iStrLen);  
+  
+void GetDate(char *sDate);  
+  
+  
+  
+/* 文件传送 */  
+  
+ER Com_open(void);  
+  
+ER SendFile(B *srcName, B *tarDir);  
+  
+ER RecvFile(B *srcName, B *tarDir);  
+  
+  
+  
+/* 折半查找 */  
+  
+ER binary_search(int fname, W pos, int fieldsize, int keypos, int keylen, B *code, B *sdata, W *lno);  
+  
+/* 顺序查找 */  
+  
+ER order_search(int fname, W pos, int fieldsize, int keypos, int keylen, B *code, B *sdata, W* lno);  
+  
+  
+  
+  
+  
+void display(B *DspString, H x, H y)  
+  
+{  
+  
+    lcd_csr_put(y, x);  
+  
+    /* lcd_string( dsp_ank, dsp_mode, (UB *)data, LCD_LF_OFF ); */  
+  
+    cputstr(LCD_ATTR_NORMAL, (UB*)DspString);  
+  
+    /* cputstr800(dsp_mode,(UB *)data); */  
+  
+}  
+  
+  
+  
+void display2(B *DspString, H x, H y)  
+  
+{  
+  
+    lcd_csr_put(y, x);  
+  
+    cputstr(LCD_ATTR_REVERS, (UB*)DspString);  
+  
+}   
+  
+  
+  
+void display3(B *DspString, H x, H y)  
+  
+{  
+  
+    lcd_csr_put(y, x);  
+  
+    cputstr(LCD_ATTR_WIDTH, (UB*)DspString);  
+  
+}  
+  
+  
+  
+/****************************************************************************** 
+ 
+    函数说明：   检查SN号是否合法 
+ 
+    返 回 值： 
+ 
+        0       SN号检验不合法 
+ 
+        1       SN号检验合法 
+ 
+******************************************************************************/  
+  
+int CheckSN()  
+  
+{  
+  
+    if (!((dat_dealer_chk((UB*)"101105")==E_OK) || (dat_dealer_chk((UB*)"365331")==E_OK)))  
+  
+        return 1;  
+  
+    else  
+  
+        return 0;  
+  
+}  
+  
+  
+  
+int getstring(int X, int Y, int iMix, int iMax, char *string)  
+  
+{  
+  
+    #ifndef INPUTALL  
+  
+    #define INPUTALL    0  
+  
+    return(read_str(X, Y, INPUTALL, string, iMax));  
+  
+    #endif  
+  
+}  
+  
+  
+  
+/****************************************************************************** 
+ 
+    函数说明：   得到系统日期 
+ 
+******************************************************************************/  
+  
+void GetDate(char *sDate)  
+  
+{  
+  
+    struct day_tabl My_day;  
+  
+    s_dateget(&My_day);  
+  
+    memset(sDate, 0x0, 11);   
+  
+    sprintf(sDate, "%04.04d-%02.02d-%02.02d", My_day.year, My_day.month, My_day.day);  
+  
+}  
+  
+  
+  
+/****************************************************************************** 
+ 
+    函数说明:   获取一个整数 
+ 
+    变    量: 
+ 
+    [x,y]       x,y的坐标值 
+ 
+    [len]       获取的数值长度 
+ 
+    [doustr]    将获取的数值保存到该字段 
+ 
+    [type]      设置正、负号 
+ 
+        0   没有符号标志 
+ 
+        1   有符号标志 
+ 
+    [iIsAdd]    返回选择的正、负号 
+ 
+        0   返回负数 
+ 
+        1   返回正数 
+ 
+******************************************************************************/  
+  
+int GetInt(int x, int y, int len, char *intstr, int type, int *iIsAdd)  
+  
+{  
+  
+    int  key, iIndex, ret;  
+  
+    char tempint[20];  
+  
+    iIndex = 0;  
+  
+    ret = 0;  
+  
+    memset(tempint, 0x0, 20);  
+  
+    strcpy(tempint, intstr);  
+  
+    *iIsAdd = 1;  
+  
+    if (type==1)  
+  
+        display("+", x, y);  
+  
+    if (type==1)  
+  
+        display(tempint, x+1, y);  
+  
+    else  
+  
+        display(tempint, x, y);  
+  
+    while(1)  
+  
+    {  
+  
+        key = getkey();  
+  
+        if (key==0x2D)  
+  
+        {  
+  
+            if (*iIsAdd==1)  
+  
+                *iIsAdd = 0;  
+  
+            else  
+  
+                *iIsAdd = 1;  
+  
+        }  
+  
+        if (type==1)  
+  
+        {  
+  
+            if (*iIsAdd==1)  
+  
+                display("+", x, y);  
+  
+            else  
+  
+                display("-", x, y);  
+  
+        }  
+  
+        if ((key==BS_KEY) && (iIndex>0))  
+  
+        {  
+  
+            tempint[iIndex] = 0x0;  
+  
+            iIndex--;  
+  
+            tempint[iIndex] = ' ';  
+  
+        }  
+  
+        if (key==CLR_KEY)  
+  
+        {  
+  
+            iIndex++;  
+  
+            tempint[0] = '0';  
+  
+            tempint[1] = 0x0;  
+  
+            ret = -1;  
+  
+            break;  
+  
+        }  
+  
+        if (key==ENT_KEY)  
+  
+        {  
+  
+            ret = 1;  
+  
+            break;  
+  
+        }  
+  
+        if ((key>=0x30) && (key<=0x39) && (iIndex<len))  
+  
+        {  
+  
+            tempint[iIndex] = key;  
+  
+            iIndex++;  
+  
+        }  
+  
+        if (type==1)  
+  
+            display(tempint, x+1, y);  
+  
+        else  
+  
+            display(tempint, x, y);  
+  
+    }  
+  
+    strcpy(intstr, tempint);  
+  
+  
+  
+    if (ret==1)  
+  
+        return(ENT_KEY);  
+  
+    else  
+  
+        return(CLR_KEY);  
+  
+}  
+  
+  
+  
+/****************************************************************************** 
+ 
+    函数说明:   获取一个实数 
+ 
+    变    量: 
+ 
+    [x,y]       x,y的坐标值 
+ 
+    [len]       获取的数值长度 
+ 
+    [doustr]    将获取的数值保存到该字段 
+ 
+    [type]      设置正、负号 
+ 
+        0   没有符号标志 
+ 
+        1   有符号标志 
+ 
+    [iIsAdd]    返回选择的正、负号 
+ 
+        0   返回负数 
+ 
+        1   返回正数 
+ 
+******************************************************************************/  
+  
+int GetDouble(int x, int y, int len, char *doustr, int type, int *iIsAdd)  
+  
+{  
+  
+    int  key, iIndex, ret, idian;  
+  
+    char tempdouble[20];  
+  
+    iIndex = 0;  
+  
+    ret = 0;  
+  
+    idian = 0;  
+  
+    memset(tempdouble, 0x0, 20);  
+  
+    strcpy(tempdouble, doustr);  
+  
+    *iIsAdd = 1;  
+  
+    if (type==1)   
+  
+        display("+", x, y);  
+  
+    if (type==1)  
+  
+        display(tempdouble, x+1, y);  
+  
+    else  
+  
+        display(tempdouble, x, y);  
+  
+    while(1)  
+  
+    {  
+  
+        key = getkey();  
+  
+        if (key==0x2D)  /* F1 */  
+  
+        {  
+  
+            if (*iIsAdd==1)  
+  
+                *iIsAdd = 0;  
+  
+            else  
+  
+                *iIsAdd = 1;  
+  
+        }  
+  
+        if (type==1)  
+  
+        {  
+  
+            if (*iIsAdd==1)  
+  
+                display("+", x, y);  
+  
+            else  
+  
+                display("-", x, y);  
+  
+        }  
+  
+        if ((key==BS_KEY) && (iIndex>0))  
+  
+        {  
+  
+            tempdouble[iIndex] = 0x0;  
+  
+            iIndex--;  
+  
+            if (tempdouble[iIndex]==46)  
+  
+                idian = 0;  
+  
+            tempdouble[iIndex] = ' ';  
+  
+        }  
+  
+        if (key==CLR_KEY)  
+  
+        {  
+  
+            iIndex++;  
+  
+            tempdouble[0] = '0';  
+  
+            tempdouble[1] = 0x0;  
+  
+            ret = -1;  
+  
+            break;  
+  
+        }  
+  
+        if (key==ENT_KEY)  
+  
+        {  
+  
+            ret = 1;  
+  
+            break;  
+  
+        }  
+  
+        if ((key>=0x30) && (key<=0x39) && (iIndex<len))  
+  
+        {  
+  
+            tempdouble[iIndex] = key;  
+  
+            iIndex++;  
+  
+        }  
+  
+        if ((key==46) && (idian==0) && (iIndex<len))  
+  
+        {  
+  
+            tempdouble[iIndex] = key;  
+  
+            idian = 1;  
+  
+            iIndex++;  
+  
+        }  
+  
+        if (type==1)  
+  
+            display(tempdouble, x+1, y);  
+  
+        else  
+  
+            display(tempdouble, x, y);  
+  
+    }   /* end while */  
+  
+    strcpy(doustr, tempdouble);  
+  
+      
+  
+    if (ret==1)  
+  
+        return(ENT_KEY);  
+  
+    else  
+  
+        return(CLR_KEY);      
+  
+}  
+  
+  
+  
+/****************************************************************************** 
+ 
+    函数说明：       用空格填充字符串 
+ 
+    参数说明： 
+ 
+    sStr：           需要添加空格的字符串 
+ 
+    iStrLen：        定义字符串的长度 
+ 
+******************************************************************************/  
+  
+void AddSpace(char *sStr, int iStrLen)  
+  
+{  
+  
+    int i, j;  
+  
+    i = strlen(sStr);  
+  
+    if (i>iStrLen)  
+  
+    {  
+  
+        sStr[iStrLen] = 0x0;  
+  
+    }  
+  
+    else  
+  
+    {  
+  
+        for(j=i; j<iStrLen-1; j++)  
+  
+            sStr[j] = ' ';  
+  
+        sStr[j] = 0x0;  
+  
+    }  
+  
+}  
+  
+  
+  
+/****************************************************************************** 
+ 
+    函数说明：       去掉字符串尾部的空格 
+ 
+    参数说明： 
+ 
+    sStr：           需要去掉空格的字符串 
+ 
+    iStrLen：        定义字符串的长度 
+ 
+******************************************************************************/  
+  
+void DecSpace(char *sStr, int iStrLen)  
+  
+{  
+  
+    int i;  
+  
+    for (i=iStrLen-2; i>0; i--)  
+  
+    {  
+  
+        if (sStr[i] != ' ')  
+  
+        {  
+  
+            sStr[++i] = 0x0;  
+  
+            break;  
+  
+        }  
+  
+    }  
+  
+}  
+  
+  
+  
+/*********************************************************************/  
+  
+/*                        文件传输模块                               */  
+  
+/*********************************************************************/  
+  
+ER Com_open()  
+  
+{  
+  
+    ER ercd;  
+  
+    CU_RSPRM tfRsPrm;  
+  
+  
+  
+    cu_stopKeySet(CU_FNC_1);  
+  
+    ercd = Ir_SetWinMode(SET_WIN2K);/* 有这行代码可以支持4M的传输：DT980，HA-60 IO */  
+  
+    ercd = cu_open(COM , CU_B115K, &tfRsPrm, CU_MODE_HT);  
+  
+    return ercd;  
+  
+}  
+  
+  
+  
+ER RecvFile(B *srcName, B *tarDir)  
+  
+{  
+  
+    ER ercd;  
+  
+  
+  
+    ercd = Com_open();  
+  
+    if (ercd != E_OK)  
+  
+    {  
+  
+        cu_stopKeySet(CU_FNC_NON);  
+  
+        return ercd;  
+  
+    }  
+  
+  
+  
+    ercd = cu_fileRecv(COM, CU_TRANS_NORMAL, (B*)srcName, (B*)tarDir, CU_PROTECT_INVALID, &tfGraphSet);  
+  
+  
+  
+    cu_stopKeySet(CU_FNC_NON);  
+  
+    ercd = cu_close(COM, CU_CLOSE_NORMAL);  
+  
+  
+  
+    return ercd;  
+  
+}  
+  
+  
+  
+ER SendFile(B *srcName, B *tarDir)  
+  
+{  
+  
+    ER ercd;  
+  
+    B SendFileName[16];  
+  
+    int i;  
+  
+  
+  
+    ercd = Com_open();  
+  
+    if (ercd != E_OK)   
+  
+    {  
+  
+        cu_stopKeySet(CU_FNC_NON);  
+  
+        return ercd;  
+  
+    }  
+  
+    memset(SendFileName, 0x0, sizeof(SendFileName)/sizeof(B));  
+  
+    if (strlen(srcName) < 15)  
+  
+    {  
+  
+        for (i=0; i<15; i++)  
+  
+        {  
+  
+            if (srcName[i] == '.')  
+  
+                break;  
+  
+        }  
+  
+        strncpy(SendFileName, srcName, i);  
+  
+        strncat(SendFileName, "        ", (11-i));  
+  
+        strncat(SendFileName, &srcName[i], 4);  
+  
+    }  
+  
+    else  
+  
+    {  
+  
+        strcpy(SendFileName, srcName);  
+  
+    }  
+  
+  
+  
+    ercd = cu_fileSend(COM, CU_TRANS_NORMAL, (B*)SendFileName, (B*)tarDir, CU_PROTECT_INVALID, &tfGraphSet);  
+  
+  
+  
+    cu_stopKeySet(CU_FNC_NON);  
+  
+    ercd = cu_close(COM, CU_CLOSE_NORMAL);  
+  
+    return ercd;  
+  
+}  
+  
+  
+  
+int CheckPassword(char *password)  
+  
+{  
+  
+    ER ret, fPASSFILE, i, iPassOk;  
+  
+    B sTemp[20], OldPass[20];  
+  
+    W lno;  
+  
+    if ((fPASSFILE = open(PASSFILE, O_RDONLY))== E_LOWERR)  
+  
+    {  
+  
+        return (E_NOOPEN); /* No Files */  
+  
+    }  
+  
+    memset(OldPass, 0x0, sizeof(OldPass));  
+  
+    read(fPASSFILE, OldPass, 6);  
+  
+    close(fPASSFILE);  
+  
+    if (strcmp(OldPass, password)==0)  
+  
+    {  
+  
+        return (0);  
+  
+    }  
+  
+    else  
+  
+    {  
+  
+        return (E_PWERR);  
+  
+    }  
+  
+}  
+  
+  
+  
+/****************************************************************************** 
+ 
+    函数说明:   折半查找 
+ 
+    参    数: 
+ 
+    [fname]     文件指针 
+ 
+    [start_adr] 文件查找的开始位置 
+ 
+    [fieldsize] 一行文本的长度 
+ 
+    [keypos]    查找字段的位置 
+ 
+    [keylen]    查找字段的长度 
+ 
+    [code]      查找字段的内容 
+ 
+    [sdata]     返回查到到的字段 
+ 
+    [fpos]      查找到的字段的偏移量 
+ 
+******************************************************************************/  
+  
+ER binary_search(int fname, W pos, int fieldsize, int keypos, int keylen, B *code, B *sdata, W *lno)  
+  
+{  
+  
+    long filelength;  
+  
+    long head, trail;  
+  
+    long offset;  
+  
+    int i, j;  
+  
+    int Count=0, end=0;  
+  
+      
+  
+    head = pos;  
+  
+    filelength = lseek(fname, 0, 2);  
+  
+    /* 计算记录条数 */  
+  
+    trail = filelength / fieldsize - 1;  
+  
+    while(1)  
+  
+    {  
+  
+        /* 计算偏移量 */  
+  
+        offset = ((head + trail) / 2) * fieldsize;  
+  
+        lseek(fname, offset, 0);  
+  
+        read(fname, sdata, fieldsize);  
+  
+        for (i=keypos, j=0; j<keylen; i++, j++)  
+  
+        {  
+  
+            if (sdata[i]==code[j])  
+  
+            {  
+  
+                Count++;  
+  
+                continue;  
+  
+            }  
+  
+            else if (sdata[i] > code[j])  
+  
+            {  
+  
+                trail = (head + trail) / 2 - 1;  
+  
+                if (head >= trail)  
+  
+                    end++;  
+  
+                Count = 0;  
+  
+                break;  
+  
+            }  
+  
+            else if (sdata[i] < code[j])  
+  
+            {  
+  
+                head = (head + trail) / 2 + 1;  
+  
+                if (head >= trail)  
+  
+                    end++;  
+  
+                Count = 0;  
+  
+                break;  
+  
+            }  
+  
+        }  
+  
+  
+  
+        if (end==2 || Count==keylen)  
+  
+            break;  
+  
+    }  
+  
+    if (Count == keylen)  
+  
+    {  
+  
+        *lno = offset;  
+  
+        return E_OK;  
+  
+    }  
+  
+    else  
+  
+    {  
+  
+        return E_NOFIND;  
+  
+    }  
+  
+}  
+  
+  
+  
+ER order_search(int fname, W pos, int fieldsize, int keypos, int keylen, B *code, B *sdata, W* lno)  
+  
+{  
+  
+    ER err = 0;  
+  
+    W offset = pos;  
+  
+      
+  
+    err = lseek(fname, pos, 0);  
+  
+    if (err==E_LOWERR)  
+  
+        return E_PRM;  
+  
+  
+  
+    while(1)  
+  
+    {  
+  
+        err = read(fname, sdata, fieldsize);  
+  
+        if(err==E_LOWERR)  
+  
+            return E_NOFIND;  
+  
+        if(err<fieldsize)  
+  
+            return E_NOFIND;  
+  
+  
+  
+        if (strncmp(&sdata[keypos], code, keylen)==0)  
+  
+        {  
+  
+            *lno = offset;  
+  
+            return E_OK;  
+  
+        }  
+  
+        offset += fieldsize;  
+  
+    }  
+  
+}  
+=====================
+ CASIO DT930开发实例(C语言) 收藏
+/******************************************************************************
+**     System name : 南京康码科技－徐州华腾盘点程序  (DT-930 10M)            **
+**     Detail      : Main routine                                            **
+**     File name   : main.c                                                  **
+**     Version     : 2.00                                                    **
+**     Author      : ZhaoWei                2007/05/24                       **
+*******************************************************************************
+******************************************************************************/
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include "itron.h"
+#include "cmndef.h"
+#include "bios1mac.h"
+#include "k_point2.h"    /*DT964使用*/
+#include "clce800.h"
+/*********************    宏定义区     ***************************/
+#define         CU_MLT_FLAG 1
+#define  WAIT    while ( (key_check()) == 0xFFFFFFFF); key_clear();
+/*----------------------*
+**  Prototype define   **
+*----------------------*/
+void MenuOpening( void );
+void work(void);
+void Menu2(void);
+void Menu2Select(void);
+void Comm(void);
+void Initial(void);
+void soundget(void);
+void Goods_cal();
+void Calculate(void);
+int del_opr(B *filename);
+void comcheck(void);
+void addspace(UB *str,H len,H KeyLen);
+void str_cut(B *str,B *substr,B *mode);
+void stock(void);
+void del_single(void);
+void FNC_Update(void);
+void FNC_Init(void);
+void compare(void);
+/*int sendfile(B *fname);
+int sendjiage(B *fname);
+int recvfile(void);*/
+void dtsort(B *filename);
+void infosort(B *filename);
+void sort(void);
+void RecvFile(B *RFileName,B *TDirName);
+void Com_open(void);
+void Com_close(void);
+void SendFile(B *SFileName,B *TDirName);
+B fpandian[20],ftbspda[20],ftbspjg[20],fjiage[20],fsort[20];
+H Lenth,Len,KeyLen,PassLen;
+H COM=COM0;
+CU_GRAPHSET cu_graphset={CU_GRAPH_ON_1, 10, 1, CU_GRAPH_NM_FILE, 1};
+/*项目名称 名称 规格 数量 确认 车号 ID号*/
+B BarCode[15],Names[20],Nums[10];
+long N=0;
+DAT_PWR_STR pwr_str;
+DAT_SYS_STR sys_id;
+/******************************************************************************
+**     Routine name: apstart2                                                **
+**     Detail      : Start routine                                           **
+**     Parameter   : None                                                    **
+**     Return value: None                                                    **
+**     Author      : Fuji Software Inc.                                      **
+******************************************************************************/
+void ap_start( void )
+{   
+    Wait2( 5L );
+    s_sound( 2250, 5 );             
+    Wait2( 5L );
+    s_sound( 2250, 5 );            
+    FNC_Init();
+    lcd_cls();               
+    MenuOpening();          
+    Wait2( 60L );
+    obr_change(0);
+    work();                   
+}
+/******************************************************************************
+**     Routine name: MenuOpening                                             **
+**     Detail      : opening message search and display                      **
+**     Parameter   : none                                                    **
+**     Return value: none                                                    **
+**     Author      : Fuji Software Inc.                                      **
+******************************************************************************/
+void MenuOpening( void )
+{
+    unsigned char    msg[][22]={
+                                "     欢迎使用 ",
+                                "      DT-900  ",
+                                "    手持终端机",
+                                "     南京康码 "};
+    short   cnt, x, y;
+    DAT_DSP_STR disp_set;
+    dat_system( SYSD_FNC_READ, SYSD_DSP, &disp_set );
+    disp_set.font_md = FONT6_SET;
+    dat_system( SYSD_FNC_WRITE, SYSD_DSP, &disp_set );
+    dat_system ( SYSD_FNC_READ, SYSD_PWR, &pwr_str );
+    pwr_str.res_md = RESUME_ON;
+    dat_system ( SYSD_FNC_WRITE, SYSD_PWR, &pwr_str );
+    for( x=0,y=1,cnt=0; cnt<4; y+=2,cnt++ )
+    {
+        lcd_csr_put( y, x );
+        cputstr(LCD_ATTR_WIDTH,msg[cnt]);
+    }
+/*******************************************************************************
+**      程序名称：cputstr
+**      说    明：显示字符串
+**      参    数：显示属性，显示内容
+**      参数取值：显示属性
+**                LCD_ATTR_NORMAL    正常显示模式
+**                LCD_ATTR_REVERS    反转显示模式
+**                LCD_ATTR_WIDTH     粗体显示模式
+**                LCD_ATTR_DOUBLE    双倍显示模式
+**      返 回 值：无
+*******************************************************************************/
+}
+void work(void)
+{
+    Initial();
+   /* Goods_cal();*/
+    for(;;)
+    {
+        Menu2();
+      Menu2Select();
+    }
+}
+/******************************************************************************
+**    Routine name: login
+**    Detail      : login system
+**    Parameter   : None
+**    Return value: None
+**    Author      : KangMa Inc.
+******************************************************************************/
+void Menu2(void)
+{
+    short x,y,cnt;
+    unsigned char msg[][21]={"   1:盘点处理",
+                             "   2:比价处理",
+                             "   3:数据通讯",
+                             "   4:数据排序",
+                            };
+    lcd_cls();
+    Dsp_str("*****盘点系统*****",1,0);
+    for( x=0,y=3,cnt=0; cnt<4; y+=2,cnt++ )
+    {
+        lcd_csr_put( y, x );
+        cputstr(LCD_ATTR_NORMAL,msg[cnt]);
+    }
+}
+void Menu2Select(void)
+{
+ H code;
+ for (;;)
+ {
+    code=getkey();
+   if(code >= '1' && code <= '4')
+        code -= 0x30;                   
+   switch (code)
+    {
+    case 1:
+        stock();
+       break;
+        case 2:
+          compare();
+          break;
+    case 3:
+        lcd_cls();
+      COM=COM0;
+       Comm();
+      break;
+     case 4:
+       dtsort(fpandian);;
+       break;
+   }
+    break;
+ }
+}
+void soundget(void)
+{
+    Wait2( 5L );
+    s_sound( 2250, 5 );
+    Wait2( 5L );
+    s_sound( 2250, 5 );
+}
+void Initial(void)
+{
+    Lenth = 70;
+    KeyLen=13;
+    strcpy(ftbspda,"b://tbspda.txt");
+    strcpy(fpandian,"pandian.txt");
+    strcpy(ftbspjg,"b://tbspjg.txt");
+    strcpy(fjiage,"jiage.txt");
+}
+void Calculate(void)
+{
+    UW size;
+    B sizenum[20];
+    size=0;
+    size = dat_fsize();
+    memset(sizenum,0x0,10);
+    sprintf(sizenum,"%d",size);
+    lcd_cls();
+    Dsp_str("剩余盘点容量:",1,0);
+    Dsp_str(sizenum,3,0);
+    Dsp_str("Bytes",5,0);
+    getkey();
+}
+/*********************************************************************/
+/*                        文件传输模块                               */
+/*********************************************************************/
+void Comm(void)
+{
+    short x,y,cnt,lp;
+    H code;
+    ER ret;
+    unsigned char cmsg[][22]={"******数据通讯******",
+                              "   1:  下载资料",
+                              "   2:上传盘点资料",
+                              "   3:上传比价资料"
+                             };
+    lcd_cls();
+    for( x=0,y=1,cnt=0; cnt<4; y+=2,cnt++ )
+    {
+        lcd_csr_put( y, x );
+        cputstr(LCD_ATTR_NORMAL,cmsg[cnt]);
+    }
+    Dsp_str("[CLR] 返回",9,3);
+    for (;;)
+    {
+        code=getkey();
+        if ((char)(code)==12) return;
+        if(code >= '1' && code <= '3')
+        {
+            code -= 0x30;
+            break;
+        }
+    }     
+    switch (code)
+    {
+        case 1:
+            Com_open();
+          /*ret=recvfile();
+        if(ret==0) Goods_cal();*/
+        RecvFile("d://dt900//down//tbspjg.txt","b://");
+        RecvFile("d://dt900//down//tbspda.Txt","b://");
+        Com_close();
+          break;
+      case 2:
+        Com_open();
+        SendFile(fpandian,"d://dt900//up//");
+          /*sendfile("pandian txt");*/
+          Com_close();
+        break;
+      case 3:
+        Com_open();
+        SendFile(fjiage,"d://dt900//up//");
+        /*sendjiage("jiage   txt");*/
+        Com_close();
+          break;
+      }
+}
+void Com_open()
+{
+  ER ercd;
+  CU_RSPRM      param;
+    
+  lcd_cls();
+  Dsp_str("打开通讯口...",1,1);
+  
+  cu_stopKeySet( CU_FNC_1 );
+  
+  param.speed = CU_B115K;
+  param.length = CU_CHAR8;
+  param.parity = CU_PARI_NON;
+  param.stop_bit = CU_STOP1;
+  
+  ercd = cu_open( COM0 , CU_B115K, ?m, CU_MODE_HT );
+  if(ercd != E_OK)
+  {    
+    cu_stopKeySet( CU_FNC_NON );
+    lcd_cls();
+    Dsp_str("端口打开失败！", 2 , 1 );
+    Dsp_str("按任意键继续......", 7 , 1 );
+    return;
+  }
+}
+void Com_close()
+{
+    CU_RSPRM        param;
+    /*lcd_cls();
+        Dsp_str("关闭通讯口...",1,1);*/
+  cu_graphset.graphMode=CU_GRAPH_ON_1;
+    cu_graphset.graphPos=4;
+    cu_graphset.graphCol=4;
+    cu_graphset.graphName=CU_GRAPH_NM_FILE;
+    cu_graphset.graphLine=1;
+    
+  param.speed = CU_B115K;
+  param.length = CU_CHAR8;
+  param.parity = CU_PARI_NON;
+  param.stop_bit = CU_STOP1;
+  
+    cu_close(COM,CU_CLOSE_NORMAL);
+    cu_stopKeySet( 0x2d );
+  /*    cu_stopKeySet( CU_KEY_RESTORE );*/
+}
+void RecvFile(B *RFileName,B *TDirName)
+{
+    int file,ercd;
+        
+    cu_graphset.graphMode=CU_GRAPH_ON_1;
+    cu_graphset.graphPos=4;
+    cu_graphset.graphCol=4;
+    cu_graphset.graphName=CU_GRAPH_NM_FILE;
+    cu_graphset.graphLine=1;
+    lcd_cls();
+    /*Dsp_str("From-c://",1,0);
+    Dsp_str(RFileName,3,0);*/
+    Dsp_str("接收数据....",5,1);
+    Dsp_str("[F1] 停止",7,1);
+  ercd = cu_fileRecv(COM,CU_TRANS_NORMAL,RFileName,TDirName, CU_PROTECT_VALID, &cu_graphset);
+  
+  if(ercd != E_OK)
+  {
+    Dsp_str("文件接收失败！", 2 , 1 );
+    Dsp_str("按任意键......", 7 , 1 );
+    return;
+  }
+}
+void SendFile(B *SFileName,B *TDirName)
+{
+    int file,ercd;
+       
+  cu_graphset.graphMode=CU_GRAPH_ON_1;
+    cu_graphset.graphPos=4;
+    cu_graphset.graphCol=4;
+    cu_graphset.graphName=CU_GRAPH_NM_FILE;
+    cu_graphset.graphLine=1;
+    
+    lcd_cls();
+    Dsp_str("发送数据....",2,1);
+/*  Dsp_str("[F1] Stop",7,1);    */
+  if((file = open( SFileName , O_RDONLY )) == E_LOWERR )
+  {
+    lcd_cls();
+    Dsp_str("无数据！",3,0);
+    WAIT
+    close(file);
+          return; 
+  }
+  close(file);
+  
+  ercd = cu_fileSend(COM,CU_TRANS_NORMAL,SFileName,TDirName, CU_PROTECT_VALID, &cu_graphset);
+  if(ercd != E_OK)
+  {
+    Dsp_str("文件发送失败！", 2 , 1 );
+    Dsp_str("按任意键......", 7 , 1 );
+    WAIT
+    return;
+  }
+  Dsp_str("发送成功！", 2 , 1 );  
+}
+/******************************************************************************
+**     Routine name: read_str                                                **
+**     Detail      : 根据指定的模式读入字符串                                **
+**     Parameter   : int x,int y:  读入字符的回显位置                        **
+**                   int mode   :  指定读入的模式aal of barocde type         **
+**                                 0: All; 1:scan only; 2:key only           **
+**                   UB *str    :  字符串用来存放读入的字符串                **
+**                                 输入的时候可以放入缺省内容                **
+**                   int len    :  读取字符串的长度                          **
+**     Return value:  0 : OK;   1:CLR;       2:Error                         **
+**     Last Date   :   1998/07/01                                            **
+**     Author      : CLCE YangDongQing                                       **
+******************************************************************************/
+int read_str(int x,int y,int mode,UB *str,int lenth)
+{
+    /*** OBR DATA BUFFER ************/
+    UB     obr_data[48];
+    KEY_INPS     key_str;
+    KEY_INP      key_chr;
+    ER ret;
+    W  Leng;
+    UB Lcnt,Len;
+    UW Code;
+    H csr_x,csr_y,csr_type;
+    int i;
+    /*** 初始化条码存储区域 ***/
+    for( i=0; i<48; i++ )
+    {
+        obr_data[i] = 0x00;
+    }
+    /*
+    for(i=0;i<lenth;i++)
+    {
+        str[i]=0x31;
+    }
+    str[0]=0x0;
+    */
+     /*** KEY INITIALIZE ROUTINE ***/
+    key_str.ext = KEY_OBR_EXT | KEY_CLR_EXT;
+    key_str.echo = ECHO_ON;
+    key_str.font_size = LCD_ANK_STANDARD;
+    key_str.type = LCD_ATTR_NORMAL;
+    key_str.len=lenth;  /* input lenth */
+    key_str.column_pos = x;
+    key_str.line_pos = y;
+    key_str.column_len=0;
+    key_chr.ext = KEY_OBR_EXT;
+    key_chr.echo = ECHO_OFF;
+    key_chr.font_size = LCD_ANK_LIGHT;
+    key_chr.type = LCD_ATTR_NORMAL;
+    key_chr.column_pos = x;
+    key_chr.line_pos = y;
+    lcd_csr_get(&csr_x,&csr_y,&csr_type);
+    lcd_csr_set(LCD_CSR_UNDER);
+    /*buf(OBR_STOFF);*/
+    OBR_chgbuf(OBR_BUFOBR);
+    key_clear();
+    switch(mode) /* 判断工作模式 */
+    {
+    case 0:   /* BOR and key */
+        ret = OBR_open( 0x00000000 );   /* OBR OPEN   */
+        OBR_flush();
+        /* 显示键值*/
+        /*for(i=0;i<lenth;i++)
+        {
+            lcd_csr_put(3,0);
+            sprintf(obr_data,"%x",str[i]);
+            cputstr(LCD_ATTR_NORMAL,obr_data);
+            key_read(&key_chr);
+        };
+        cputstr(LCD_ATTR_NORMAL,"test");
+        */
+        ret = key_string(&key_str,str);
+        if(ret==E_OK)
+        {
+            ret=0;
+            break;
+        }
+        if(ret==E_KEY_OBR)
+        {
+            ret = OBR_stat( &Leng, &Lcnt );
+            ret = OBR_gets( &obr_data[0], &Code, &Len ); /*  读条码 */
+            obr_data[Len]=0x00;
+            CR_Check(obr_data,Len);
+            for(i=0;i<lenth;i++)
+            {
+                if(obr_data[i]==0x00) break;
+                str[i]=obr_data[i];
+            };
+            str[i]=0x00;
+            ret=0;
+            break;
+        }
+        if(ret==E_KEY_CLR)
+        {
+            break;
+        }
+        ret=2;
+        break;
+    case 1:   /* OBR only  */
+        ret = OBR_open( 0x00000000 );   /* OBR OPEN   */
+        OBR_flush();
+        while(1)
+        {
+            ret=key_read(&key_chr);
+            if(E_KEY_OBR==ret) break;
+            if(0xc==ret) break;
+        }
+        if(ret==0xc)
+        {
+            ret=E_KEY_CLR;
+            break;
+        }
+        ret = OBR_stat( &Leng, &Lcnt );
+        ret = OBR_gets( &obr_data[0], &Code, &Len ); /*  读条码 */
+        obr_data[Len]=0x00;
+        CR_Check(obr_data,Len);
+        for(i=0;i<lenth;i++)
+        {
+            if(obr_data[i]==0x00) break;
+            str[i]=obr_data[i];
+        };
+        str[i]=0x00;
+        ret=0;
+        break;
+    case 2:  /* key only */
+            key_str.ext = KEY_NON_EXT | KEY_CLR_EXT;
+            ret=key_string(&key_str,str);
+        break;
+    default:  /* error */
+        ret=2;
+        break;
+    }
+    lcd_csr_set(csr_type);
+    OBR_chgbuf(OBR_BUFOBR);
+    OBR_close();
+    return ret;
+}
+void addspace(UB *str,H len,H KeyLen)
+{
+  H i;
+  for(i=len;i<KeyLen;i++) str[i]=' ';
+  str[KeyLen]=0x0;
+}
+void FNC_Update( void )
+{
+        KEYFORM     kcode;
+        kcode.attr = 0x0;
+    kcode.code = 0x1;
+        key_fnc( FNC_SET, FNC_6, &kcode);
+    kcode.attr = 0x0;
+    kcode.code = 0x2;
+        key_fnc( FNC_SET, FNC_7, &kcode);
+    kcode.attr = 0x0;
+    kcode.code = 0x3;
+        key_fnc( FNC_SET, FNC_8, &kcode);
+}
+void FNC_Init( void )
+{
+        KEYFORM     kcode;
+    kcode.attr = 0x0;
+    kcode.code = 0x2d;
+        key_fnc( FNC_SET, FNC_1, &kcode);
+    kcode.attr = 0x0;
+    kcode.code = 0x1d;
+        key_fnc( FNC_SET, FNC_2, &kcode);
+    kcode.attr = 0x0;
+    kcode.code = 0x1c;
+        key_fnc( FNC_SET, FNC_3, &kcode);
+    kcode.attr = 0x0;
+    kcode.code = 0x10;
+        key_fnc( FNC_SET, FNC_4, &kcode);
+    kcode.attr = 0x0;
+    kcode.code = 0x20;
+        key_fnc( FNC_SET, FNC_5, &kcode);
+    kcode.attr = 0xff;
+    kcode.code = 0x0;
+        key_fnc( FNC_SET, FNC_6, &kcode);
+    kcode.attr = 0xff;
+    kcode.code = 0x1;
+        key_fnc( FNC_SET, FNC_7, &kcode);
+    kcode.attr = 0xff;
+    kcode.code = 0x02;
+        key_fnc( FNC_SET, FNC_8, &kcode);
+}
+void str_cut(B *str,B *substr,B *mode)
+{
+  ER k[80];
+  ER i,j,m,n;
+  B strnew[80];
+    m=0;
+    for(i=0,j=0;i<strlen(str);i++)
+     {
+       if(str[i]==substr[j])   j++;
+       else
+        {j=0;
+         continue;
+        }
+       if(j==strlen(substr))
+        {
+          k[m]=i-j+1;
+          j=0;
+          m++;
+        }
+     }
+ if (m>0)
+   {
+    if (strcmp(mode,"FIRST")==0)m=1;
+    n=0;j=0;
+    for (i=0;i<strlen(str);i++)
+     {
+       if (i==k[n]&& n<m)
+         {
+           i=i+strlen(substr)-1;
+           n++;
+           continue;
+         }
+       if(i!=k[n])
+         {
+           strnew[j]=str[i];
+           j++;
+         }
+     }
+    strnew[j]=0x0;
+    strcpy(str,strnew);
+   }
+}
+/*******************************************************************************
+**      函数名称: stock()                                                     **
+**      函数说明: 盘点处理                                                    **
+*******************************************************************************/
+void stock(void)
+{
+    ER templen;
+    ER i,j,ret,fidx,fnew,er;
+    W lno,lno1,cpos;
+    double num1,num2;
+    B temp[15],td[23],tp[23];
+    B data[75],pdata[35],data1[35]; /*资料数据总数、盘点数据总数*/
+    /*商品编码  名称  单价  包装率*/
+    B comcode[10],cname[30],price[10],casing[5],tt[23];
+    B num[10],numnew[10],numadd[10],numold[10],str[10];
+    FNC_Update();
+    if(( fidx = open(ftbspda, O_RDONLY))== E_LOWERR )
+    {
+        lcd_cls();
+        Dsp_str("打开资料文件错误!",1,0);
+        getkey();
+        close(fidx);
+        return;
+    }
+    if(( fnew = open(fpandian, O_CREAT | O_RDWR | O_APPEND))== E_LOWERR )
+    {
+        lcd_cls();
+        Dsp_str("打开盘点文件错误!",1,0);
+        getkey();
+        close(fnew);
+        close(fidx);
+        return;
+    }
+    for(;;)
+    {
+          lcd_cls();
+        Dsp_str("******盘点处理******",1,0);
+          Dsp_str("请扫描条码:",3,0);
+        Dsp_str("[CLR] 退出",9,0);
+          memset(temp,0x0,13);
+        ret=read_str(0,5,0,temp,13);
+          templen=strlen(temp);
+        if (ret==E_KEY_CLR) break;
+          if (templen==0) continue;
+        addspace(temp,strlen(temp),13);
+        memset(BarCode,0x0,13);
+        strcpy(BarCode,temp);
+          memset(data,0,70);
+        /*ret=Dat_F_Search(fidx,0L,70,10,13,temp,data,&lno);*/
+        ret=half_search(fidx,0,70,10,13,BarCode,data,&lno,N);
+          if (ret!=E_OK)
+        {
+            lcd_cls();
+            Dsp_str(BarCode,1,0);
+            Dsp_str("无此货物资料!",3,0);
+          Dsp_str("按任意键继续!",5,0);
+            getkey();
+            continue;
+        }
+        for(i=0,j=0;j<10;i++,j++) comcode[j]=data[i];
+            comcode[j]=0x0;
+        for(i=10,j=0;j<13;i++,j++) BarCode[j]=data[i];
+            BarCode[j]=0x0;
+          for(i=23,j=0;j<30;i++,j++) cname[j]=data[i];
+            cname[j]=0x0;
+        for(i=53,j=0;j<10;i++,j++) price[j]=data[i];
+          price[j]=0x0;
+        for(i=63,j=0;j<5;i++,j++) casing[j]=data[i];
+          casing[j]=0x0;
+        
+        memset(tt,0x0,23);
+        strcpy(tt,comcode);
+        strcat(tt,BarCode);
+        memset(pdata,0,35);
+        ret=Dat_F_Search(fnew,0L,35,0,23,tt,pdata,&lno);
+        if(ret!=E_OK)
+        {
+            lseek(fnew,0L,2);
+        }
+        num2=0;
+        for(;;)
+        {
+            lseek(fnew,lno,0);
+            er=read(fnew,tp,23);
+            if(er==E_LOWERR) break;
+            if(er==0) break;
+            if(er!=23) break;
+            for(;;)
+            {
+                if(strcmp(tp,tt)!=0)
+                {
+                    break;
+                }
+                else
+                {
+                    read(fnew,data1,35);
+                    for(i=0,j=0;j<10;i++,j++) num[j]=data1[i];
+                        num[j]=0x0;
+                    num2 += atof(num);
+                    break;
+                }
+            }
+            lno+=35;
+        }
+        memset(numold,0x0,10);
+        sprintf(numold,"%-10.2f",num2);
+        
+        lcd_cls();
+        Dsp_str("编码:",1,0);
+        Dsp_str(comcode,1,5);
+        Dsp_str("条码:",3,0);
+        Dsp_str(BarCode,3,5);
+        Dsp_str("名称:",5,0);
+        Dsp_str(cname,5,5);
+        Dsp_str("已盘数:",7,8);
+        Dsp_str(numold,7,15);
+        Dsp_str("盘点数:",9,0);
+        
+        memset(numnew,0x0,10);
+        ret=read_str(7,9,2,numnew,10);
+        if (ret==E_KEY_CLR)  continue;
+          if (strlen(numnew)==0) continue;
+        num1=atof(numnew);
+        sprintf(numadd,"%-10.2f",num1);
+        write(fnew,comcode,10);
+        write(fnew,BarCode,13);
+        write(fnew,numadd,10);
+        write(fnew,"/x0d/x0a",2);
+    }
+    close(fidx);
+    close(fnew);
+    FNC_Init();
+}
+/*******************************************************************************
+**      函数名称: compare()                                                   **
+**      函数说明: 比价处理                                                    **
+*******************************************************************************/
+void compare(void)
+{
+    ER  keycode,templen;
+    ER i,j,ret,fidx,fnew,er;
+    W lno;
+    double num1,num2;
+    B temp[15];
+    /*资料数据总数、盘点数据总数*/
+    B data[70],pdata[35],tdata[23];
+    /*商品编码  名称  单价  新价格*/
+    B comcode[10],cname[30],price[10],nprice[10],tt[23];
+    B num[10],numnew[10],numadd[10],numold[10];
+    H code;
+    FNC_Update();
+    if(( fidx = open(ftbspjg, O_RDONLY))== E_LOWERR )
+    {
+        lcd_cls();
+        Dsp_str("打开资料文件错误!",1,0);
+        getkey();
+        close(fidx);
+        return;
+    }
+    if(( fnew = open(fjiage, O_CREAT | O_RDWR | O_APPEND))== E_LOWERR )
+    {
+        lcd_cls();
+        Dsp_str("打开价格文件错误!",1,0);
+        getkey();
+        close(fnew);
+        close(fidx);
+        return;
+    }
+    for(;;)
+    {
+          lcd_cls();
+        Dsp_str("******比价处理******",1,0);
+          Dsp_str("请扫描条码:",3,0);
+        Dsp_str("[CLR] 退出",9,0);
+          memset(temp,0x0,13);
+        ret=read_str(0,5,0,temp,13);
+          templen=strlen(temp);
+        if (ret==E_KEY_CLR) break;
+          if (templen==0) continue;
+        addspace(temp,strlen(temp),13);
+          memset(data,0,65);
+        ret=Dat_F_Search(fidx,0L,65,10,13,temp,data,&lno);
+          if (ret!=E_OK)
+        {
+            lcd_cls();
+            Dsp_str(temp,1,0);
+            Dsp_str("无此货物资料!",3,0);
+            Dsp_str("按任意键继续!",5,0);
+            getkey();
+            continue;
+        }
+        for(i=0,j=0;j<10;i++,j++) comcode[j]=data[i];
+            comcode[j]=0x0;
+        for(i=10,j=0;j<13;i++,j++) BarCode[j]=data[i];
+            BarCode[j]=0x0;
+          for(i=23,j=0;j<30;i++,j++) cname[j]=data[i];
+            cname[j]=0x0;
+        for(i=53,j=0;j<10;i++,j++) price[j]=data[i];
+            price[j]=0x0;
+        lcd_cls();
+        Dsp_str("编码:",1,0);
+        Dsp_str(comcode,1,5);
+        Dsp_str("条码:",3,0);
+        Dsp_str(BarCode,3,5);
+        Dsp_str("名称:",5,0);
+        Dsp_str(cname,5,5);
+        Dsp_str("进价:",7,10);
+        Dsp_str(price,7,15);
+        Dsp_str("新进价:",9,0);
+        
+        memset(pdata,0,35);
+        ret=Dat_F_Search(fnew,0L,35,10,13,BarCode,pdata,&lno);
+        if(ret!=E_OK)
+            lseek(fnew,0L,2);
+        else
+            lseek(fnew,lno,0);
+            
+        memset(nprice,0x0,10);
+        ret=read_str(7,9,2,nprice,10);
+        if (ret==E_KEY_CLR)  continue;
+          if (strlen(numnew)==0) continue;
+        write(fnew,comcode,10);
+        write(fnew,BarCode,13);
+        write(fnew,cname,30);
+        write(fnew,price,10);
+        write(fnew,nprice,10);
+        write(fnew,"/x0d/x0a",2);
+    }
+    close(fidx);
+    close(fnew);
+    FNC_Init();
+}
+/*******************************************************************************
+**      函数名称: sort()                                                      **
+**      函数说明: 排序处理                                                    **
+*******************************************************************************/
+void sort(void)
+{
+    short x,y,cnt,lp;
+    H code;
+    ER ret;
+    unsigned char cmsg[][22]={"******数据排序******",
+                              "   1:  排序资料",
+                              "   2:排序盘点资料"
+                             };
+    lcd_cls();
+    for( x=0,y=1,cnt=0; cnt<3; y+=2,cnt++ )
+    {
+        lcd_csr_put( y, x );
+        cputstr(LCD_ATTR_NORMAL,cmsg[cnt]);
+    }
+    Dsp_str("[CLR] 返回",9,3);
+    for (;;)
+    {
+        code=getkey();
+        if ((char)(code)==12) return;
+        if(code >= '1' && code <= '3')
+        {
+            code -= 0x30;
+            break;
+        }
+    }     
+    switch (code)
+    {
+        case 1:
+            infosort(fsort);
+            break;
+        case 2:
+            dtsort(fpandian);
+            break;
+    }
+}
+void dtsort(B *filename)
+{
+    UW i,j,k,m,n,c;
+    ER fd,er;
+    W cpos;
+    UB find_sw;
+    FIL_SIZE buffer;
+    H fieldsize;
+    long num,s1,s2;
+    double n1,n2;
+    B temp[36],sdata[36],sdata1[36];
+    B tp[13],tp1[13],nums[10];
+    B key[34],key1[34];
+    
+    if((fd = open(filename,  O_RDWR | O_APPEND)) == E_LOWERR)
+    {
+        lcd_cls();
+        Dsp_str("文件无数据!",5,1);
+        getkey();
+        close(fd);
+        return;
+    }
+    /*获取记录数*/
+    er=fil_filesize(filename,&buffer,find_sw);
+    num=buffer.size/35;
+    fieldsize=35;
+    for(i=0;i<num-1;i++)
+    {
+        k=i;
+        cpos=k*fieldsize;
+        lseek(fd,cpos,0);
+        memset(key,0x0,33);
+        memset(key1,0x0,33);
+        er=read(fd,key,33);/*读取记录i*/
+        if (er==E_LOWERR) break;
+        
+        for(j=i+1;j<num;j++)
+        {
+            cpos=j*fieldsize;
+            lseek(fd,cpos,0);
+            er=read(fd,key1,33);/*读取记录j*/
+            if (er==E_LOWERR) break;
+            for(m=10,n=0;n<13;m++,n++) tp[n]=key[m];
+                tp[n]=0x0;
+            for(m=10,n=0;n<13;m++,n++) tp1[n]=key1[m];
+                tp1[n]=0x0;
+            n1=atof(tp);
+            n2=atof(tp1);
+            /*c=strcmp(tp,tp1);
+            if(c<0)
+            {
+                   k=j;
+                   strcpy(tp1,tp);
+            }*/
+            if(n1<n2)
+            {
+                k=j;
+                strcpy(tp1,tp);
+            }
+        }
+        if (k!=i)
+        {
+            cpos=i*fieldsize;/*指针移至记录i*/
+            lseek(fd,cpos,0);
+            er=read(fd,sdata,35);
+            
+            if (er==E_LOWERR) break;
+            memset(temp,'/0',35);
+            strcpy(temp,sdata);
+            
+            cpos=k*fieldsize;/*指针移至记录k*/
+            lseek(fd,cpos,0);
+            er=read(fd,sdata1,35);
+                       
+            if (er==E_LOWERR) break;
+            strcpy(sdata,sdata1);
+            cpos=k*fieldsize;/*指针移至记录k*/
+            lseek(fd,cpos,0);
+            write(fd,temp,35);/*位置k写入*/
+            cpos=i*fieldsize;/*指针移至记录i*/
+            lseek(fd,cpos,0);
+            write(fd,sdata,35);
+        }
+    }
+    close(fd);
+    key_clear();
+    lcd_cls();
+    Dsp_str("排序完成",3,3);
+    Wait2( 5L );
+    Wait2( 5L );
+    s_sound( 2250, 5 );
+    return;
+}
+void infosort(B *filename)
+{
+    UW i,j,k,m,n,c;
+    ER fd,er;
+    W cpos;
+    UB find_sw;
+    FIL_SIZE buffer;
+    H fieldsize;
+    long num;
+    long s1,s2;
+    double n1,n2;
+    /*数据总长70（加2位）*/
+    B temp[75],sdata[75],sdata1[75];
+    B tp[13],tp1[13],t1[13],t2[13];
+    /*单行总长64*/
+    B key[68],key1[68],nums[10];
+    
+    lcd_cls();
+    Dsp_str("正在排序......",3,3);
+    
+    if((fd = open(filename,  O_RDWR | O_APPEND)) == E_LOWERR)
+    {
+        lcd_cls();
+        Dsp_str("文件无数据!",5,1);
+        Dsp_str(filename,7,1);
+        getkey();
+        close(fd);
+        return;
+    }
+    /*获取记录数*/
+    er=fil_filesize(filename,&buffer,find_sw);
+    num=buffer.size/70;
+    fieldsize=70;
+    
+    /*lcd_cls();
+    sprintf(nums,"%d",num);
+    Dsp_str(nums,1,0);
+    getkey();*/
+    
+    memset(t1,0x0,13);
+    memset(t2,0x0,13);
+    for(i=0;i<num-1;i++)
+    {
+        k=i;
+        cpos=k*fieldsize;
+        lseek(fd,cpos,0);
+        memset(key,0x0,68);
+        memset(key1,0x0,68);
+        er=read(fd,key,68);/*读取记录i*/
+        if (er==E_LOWERR) break;
+        
+        for(j=i+1;j<num;j++)
+        {
+            cpos=j*fieldsize;
+            lseek(fd,cpos,0);
+            er=read(fd,key1,68);/*读取记录j*/
+            if (er==E_LOWERR) break;
+            
+            for(m=10,n=0;n<13;m++,n++) tp[n]=key[m];
+                tp[n]=0x0;
+            for(m=10,n=0;n<13;m++,n++) tp1[n]=key1[m];
+                tp1[n]=0x0;
+                       
+            c=strcmp(tp,tp1);
+            if(c<0)
+            {
+                k=j;
+                strcpy(tp1,tp);
+            }
+        }
+        if (k!=i)
+        {
+            cpos=i*fieldsize;/*指针移至记录i*/
+            lseek(fd,cpos,0);
+            er=read(fd,sdata,70);
+            
+            if (er==E_LOWERR) break;
+            memset(temp,'/0',70);
+            strcpy(temp,sdata);
+            
+            cpos=k*fieldsize;/*指针移至记录k*/
+            lseek(fd,cpos,0);
+            er=read(fd,sdata1,70);
+                    
+            if (er==E_LOWERR) break;
+            strcpy(sdata,sdata1);
+            cpos=k*fieldsize;/*指针移至记录k*/
+            lseek(fd,cpos,0);
+            write(fd,temp,70);/*位置k写入*/
+            cpos=i*fieldsize;/*指针移至记录i*/
+            lseek(fd,cpos,0);
+            write(fd,sdata,70);
+        }
+    }
+    close(fd);
+    key_clear();
+    lcd_cls();
+    Dsp_str("排序完成",3,3);
+    Wait2( 5L );
+    Wait2( 5L );
+    s_sound( 2250, 5 );
+    return;
+}
+void Goods_cal()
+{
+  ER fn,ret;
+  W pos,sumnum;
+  B record[165],ALL[10],temp_dsp[10];   
+  
+  FIL_SIZE buffer;
+  UB  find_sw;
+    if((fn=open(ftbspda, O_RDONLY))== E_LOWERR )
+    {
+      lcd_cls();
+      Dsp_str("tbspda.txt Error!",1,0);
+      Dsp_str("请先下载 tbspda.txt!",3,0);
+      close(fn);
+      getkey();
+      return;
+    }
+    
+    lcd_cls();
+    Dsp_str("商品资料库正在更新",1,0);
+    Dsp_str("请等待...",3,0);
+    
+    ret=fil_filesize(ftbspda,&buffer,find_sw);
+    N=buffer.size/Lenth;
+    sprintf(ALL,"%6ld",N);
+    lcd_cls();
+    Dsp_str("总记录数=",5,0);
+    Dsp_str(ALL,5,10);
+    Dsp_str("请按任意键继续",7,0);
+    
+    getkey();
+    close(fn);
+}
+=================================
+DT900测试程序 
+保存为Global.h 
+/* 
+测试DT900软件 
+*/ 
+#include        "casio.h   " 
+/* 定义下载传文件: 73 */ 
+/*config.txt: 20位单号＋3位产品种类序号＋20位经销商＋20位产品ID＋4位需求数量＋4位预定义*/ 
+#define  FileConfig "config.ini" 
+/*customer.txt:20位经销商ID＋50位经销商名字*/ 
+#define  FileCustomer "customer.txt" 
+/*product.txt:11位数码组号＋20位产品ID＋50位产品名称*/ 
+#define  FileProduct "product.txt" 
+/**************************************************************************************/ 
+/*上传文件dataup.txt,记录格式：111 
+20位出库单号+2位单据类型位+20位经销商ID+20位产品ID+20位垛码+20箱条码+4位扫描数量+3位标志位*/ 
+#define  FileDataUp   "dataUP.txt" 
+/*扫描临时文件ScanData.txt,记录格式： 75位 
+20位出库单号+2位单据类型位+20位经销商ID+20位产品ID+3位产品种类序号+4位扫描数量+4位需求数量 
+注意：需求数量（新建单据为0000)，在扫描一个号码后，分析该号码对应的产品种类是否扫描过需要这个文件*/ 
+#define  FileScanData   "saomiao.txt" 
+/*临时记录文件Xinjian.txt，记录格式：75位 
+20位出库单号+2位单据类型位+20经销商ID+3位产品种类序号+20位产品ID+4位扫描数量+4位需求数量 
+注意：用来记录单据、经销商、产品ID等，便于显示扫描信息的时候找到有哪些产品需要显示和ScanData的区别 
+在于:产品id和种类序号位置是颠倒的*/ 
+#define  FileXinjian   "xinjian.txt"   
+int PosId,jilu,jilu1;   /* 定义POS机ID */ 
+int ReceiptType; /*记录单据类型，在Uploadfile后面*/ 
+int record; /*保存查询信息的时候，用来顺序定义单据里面的产品序号*/ 
+UB  ProductIndex[5]; /*上位机config文件单据号后3位产品种类序号,也适用新建单据*/ 
+int sum,FLAG; 
+UB  UpLoadStrHead[100]; /*上传文件单据头：单据号＋单据类型＋经销商ID*/ 
+UB  UpLoadStrHeadtmp[100]; /*在上传文件里面查找该类产品是否扫描过的时候用*/ 
+UB ReceiptNo[50],customerid[50],customername[100]; /*对于每次扫描，单据号、经销商ID和名字是肯定不会变的*/ 
+UB upload2[100]; 
+UB  tmpproductid[50];   /*临时记录当前扫描条码的产品ID*/ 
+/*定义所使用的函数*/ 
+/****菜单显示函数******/ 
+void main_menu0(void); 
+void Menu_CK(int imode); 
+void Menu_DataRT(void); /*****数据传输函数******/ 
+void Menu_ScanSub(int itype); /*****开始扫描******/ 
+void main_menu7(void); /*****程序确认返回函数******/ 
+void main_menu8(void); /*****菜单显示函数1******/ 
+void ReadBarCode(void); /*****循环扫描函数*****/ 
+void IsUpLoadFile(void); /*****生成UpLoad数据文件****/ 
+void IsConfigFile(void); /*****判断数据文件config是否下载****/ 
+/*idw1只对saomiao文件有效，指明临时匹配记录的位置*/ 
+void WriteUpLoadFile(UB* BarCode,int ixuqiusum,int imode,int idw1); /*****写入传的数据文件*****/ 
+void del(void); /*****删除扫描函数*****/ 
+void show(UB* receiptno); /*****显示扫描信息函数*****/ 
+void show1(void); 
+void format_str(UB* data,int len);/*****左补空格函数******/ 
+void clear_str(B* data); /*****去除字符串左侧空格函数*****/ 
+void warning_sound(void); /* 警告声函数 */ 
+void make_sound(void); /* 正常读写发声函数 */ 
+void make_sound1(void); /* 目前只在删除条码的时候用到这个*/ 
+void make_soundDuoMa(void); /* 垛码扫描时候的提示音*/ 
+void check_memory(void); /* 内存大小检测函数 */  
+作者：218.80.160.*2007-9-12 10:28 回复此发言 
+2 DT900测试程序
+void AddLeftSpac(B* data,int len); /*****左补空格函数******/ 
+void AddLeftX(B* data,int len); /*****左补X函数********/ 
+void AddLeft0(B* data,int len); /*****左补0函数********/ 
+void ClearLeftSpace(B* data); /*****去除字符串左侧空格函数*****/ 
+void ChangeSpaceToZero(B *data); /*该函数把字符串中间的空格改成0，主要是处理时间串*/ 
+ /* 数据正常写磁盘时发出的响声 */ 
+void make_sound(void) 
+{ 
+    s_sound( 2400, 6 ); 
+} 
+/* 数据不正常发出的响声 */ 
+void warning_sound(void) 
+{ 
+    s_sound( 3000, 9 ); 
+    Wait2( 5L ); 
+    s_sound( 3000, 9 );  
+    Wait2( 5L ); 
+    s_sound( 3000, 9 );  
+} 
+void make_sound1(void) 
+{ 
+s_sound(4000,9); 
+} 
+void make_soundDuoMa(void) 
+{ 
+s_sound(4000,14); 
+Wait2( 5L ); 
+s_sound(4000,14); 
+Wait2( 5L ); 
+} 
+/*****去除字符串左侧空格函数*****/ 
+void clear_str(B *data) 
+{ 
+int i,j,len; 
+UB *temp; 
+i=0; 
+len=strlen(data); 
+temp=(UB*)malloc((len+1)*sizeof(UB)); 
+memset(temp,0x00,sizeof(temp)); 
+while(data[i]==' ') 
+  { 
+ i=i+1; 
+} 
+j=len-i; 
+memcpy(temp,data+i,j); 
+memset(data,0x00,sizeof(data)); 
+memcpy(data,temp,j); 
+data[j] = '/0'; 
+free(temp); 
+  return; 
+} 
+/**************左补空格函数***********/ 
+void format_str(UB* data,int len) 
+{       
+     int i,j; 
+       UB *temp;        
+       j=strlen(data); 
+       temp=(UB*)malloc((j+1)*sizeof(UB));        
+       memset(temp,0x00,j+1); 
+       memcpy(temp,data,j); 
+       for (i=0;i<len-j;i++) 
+      data[i]=' '; 
+       memcpy(data+len-j,temp,j); 
+       free(temp); 
+return; 
+}                                                                                                                                       
+void ClearLeftSpace(B *data) 
+{ 
+int i,j,len; 
+UB *temp; 
+i=0; 
+len=strlen(data); 
+temp=(UB*)malloc((len+1)*sizeof(UB)); 
+memset(temp,0x00,sizeof(temp)); 
+while(data[i]==' ') 
+  { 
+ i=i+1; 
+} 
+j=len-i; 
+memcpy(temp,data+i,j); 
+memset(data,0x00,sizeof(data)); 
+memcpy(data,temp,j); 
+data[j] = '/0'; 
+free(temp); 
+  return; 
+} 
+void ChangeSpaceToZero(B *data) 
+{ 
+int i,len; 
+len=strlen(data); 
+for (i=0;i<len;i++) 
+{ 
+if(data[i]==' ') 
+  data[i] = '0'; 
+} 
+  return; 
+} 
+void AddLeftSpac(B* data,int len) 
+{       
+     int i,j; 
+       UB *temp; 
+        
+       j=strlen(data); 
+       temp=(UB*)malloc((j+1)*sizeof(UB));        
+       memset(temp,0x00,j+1); 
+       memcpy(temp,data,j); 
+       for (i=0;i<len-j;i++) 
+      data[i]=' '; 
+       memcpy(data+len-j,temp,j); 
+       free(temp); 
+return; 
+}   
+void AddLeftX(B* data,int len) 
+{       
+     int i,j; 
+       UB *temp; 
+        
+       j=strlen(data); 
+       temp=(UB*)malloc((j+1)*sizeof(UB));        
+       memset(temp,0x00,j+1); 
+       memcpy(temp,data,j); 
+       for (i=0;i<len-j;i++) 
+      data[i]='X'; 
+       memcpy(data+len-j,temp,j); 
+       free(temp); 
+return; 
+} 
+void AddLeft0(B* data,int len) 
+{       
+     int i,j; 
+       UB *temp; 
+        
+       j=strlen(data); 
+       temp=(UB*)malloc((j+1)*sizeof(UB));        
+       memset(temp,0x00,j+1); 
+       memcpy(temp,data,j); 
+       for (i=0;i<len-j;i++) 
+      data[i]='0'; 
+       memcpy(data+len-j,temp,j); 
+       free(temp); 
+return; 
+}
+作者：218.80.160.*2007-9-12 10:28 回复此发言 
+3 回复：DT900测试程序
+全部保存为apsmp.c 
+/****************************************************************/ 
+/* */ 
+/* PROGRAM : 物流跟踪防窜防伪系统－手持管理-测试系统 */ 
+/* FILENAME : APSMP.C */ 
+/* VERSION : DT-900 3.02 */ 
+/* AUTHOR : 上海电子 */ 
+/* DATE OF UPDATE : 2007/07/11 */ 
+/* */ 
+/****************************************************************/ 
+/* 引用头文件 */ 
+#include "stdio.h " 
+#include "string.h " 
+#include "stdlib.h " 
+#include "itron.h " 
+#include "casio.h " 
+#include "cmndef.h " 
+#include "bios1mac.h" 
+#include "math.h" 
+#include "Global.h" 
+int icount; 
+ static const UB *menu[]={ 
+" 1.条码扫描", 
+" 4.数据传输" 
+}; 
+void ap_start ( void ) 
+ { 
+int KIND; 
+ SysInit(0); 
+while(1) 
+{ 
+  /* 显示用户信息 */ 
+  cls(); 
+  Dsp_str(" 物流管理系统",2,0); 
+  Dsp_str(" 测试",4,0); 
+  Dsp_str(" V1.01",6,0); 
+ Wait2(50); 
+  cls(); 
+  Dsp_str(menu[0],2,0); 
+  Dsp_str(menu[1],4,0); 
+  icount = 0; 
+  KIND=getkey(); 
+ key_clear(); 
+  switch(KIND) 
+ {  
+ case '1': /*1.正常出库*/ 
+  {  
+ cls(); 
+IsUpLoadFile(); 
+ReadBarCode(); 
+break; 
+  }  
+  case'4': 
+   { 
+    cls(); 
+   Menu_DataRT(); 
+   break; 
+   } 
+  default:  
+   {  
+    break; 
+ } 
+  } 
+} 
+ }  
+  
+/*该函数是根据congfig里面信息开始扫描条码，所以单号、经销商、产品ID都已经确定*/ 
+ void ReadBarCode(void) 
+{ 
+UB buff[50],barcode1[50],barcode2[50],barcode3[50],temp[10]; 
+int flag,ret; 
+ flag =1; 
+ Dsp_str("Scan code:",1,0); 
+memset(barcode2,0x00,sizeof(barcode2)); 
+memset(barcode3,0x00,sizeof(barcode3)); 
+ while(flag) 
+ {  
+ /*lcd_csr_put(3,0); */ 
+ lcd_csr_set((H)LCD_CSR_UNDER);  
+ /****** 读入条码 **************/  
+ key_clear(); 
+ strcpy(barcode3,barcode2); 
+ strcpy(barcode2,barcode1); 
+ memset(buff,0x00,sizeof(buff));  
+ memset(barcode1,0x00,sizeof(barcode1)); 
+ memset(temp,0x00,sizeof(temp)); 
+ ret=read_str(3,0,0,buff,20); 
+ if(ret==E_KEY_CLR) 
+ { 
+  cls(); 
+ flag = 0; 
+ return;  
+ }  
+ memcpy(barcode1,buff,20);  
+ icount=icount+1; 
+ Dsp_str(barcode1,5,0); 
+ Dsp_str(barcode2,7,0); 
+ Dsp_str(barcode3,9,0); 
+ sprintf(temp,"%04d",icount); 
+ Dsp_str(temp,1,12); 
+ WriteUpLoadFile(barcode1,1,0,0);  
+ } 
+} 
+/*构造两个变量，分别写入Uploadfile1，和saomiao文件，后者记录有实际扫描数量，前者也有，但是逐行记录的*/ 
+void WriteUpLoadFile(UB* BarCode,int iShijisum,int imode,int idw1) 
+{ 
+int biaoji,j; 
+UB *temp; 
+UB upload[100],productnum[10],id[5],biaozhi[20]; 
+ memset(upload,0x00,sizeof(upload));  
+ j=strlen(BarCode); 
+ temp=(UB*)malloc((j+1)*sizeof(UB));  
+ memset(temp,0x00,j+1); 
+ memcpy(temp,BarCode,j); 
+ /*写入上传文件文件*/ 
+ biaoji=1; 
+ memcpy(upload,temp,j);  
+strcat(upload,"/xd/xa");    
+dat_F_Write(FileDataUp,1,0,upload,j+2); 
+} 
+/************数据传输函数****************/ 
+void Menu_DataRT(void) 
+{ 
+ ER kind,kind2,ret;  
+ int i,j,k,flag,flag1;  
+ flag=1;  
+ while(flag)  
+ {  
+  cls();  
+ Dsp_str(" 1.上传数据文件",2,0);  
+ Dsp_str(" 2.删除数据文件",4,0);  
+ Dsp_str(" 3.返 回",6,0);  
+ key_clear();  
+ kind=getkey();  
+ switch(kind)  
+ {  
+ case '1':{  
+   cls();  
+ if(sendfile(FileDataUp)==E_OK) 
+ { 
+ cls(); 
+ Dsp_str("数据文件上传成功!",1,2); 
+ Dsp_str("删除数据文件...",4,2); 
+ del_file(FileDataUp); /* 删除上传文件 */ 
+ Wait2(30); 
+ } 
+ break; 
+ }  
+ case'2':{ 
+  cls(); 
+  Dsp_str("你是否要删除扫描信息",3,1); 
+  Dsp_str("1 是 2 否",7,5); 
+  kind2=getkey(); 
+  switch(kind2) 
+  { 
+  case '1': 
+  { 
+  del_file(FileDataUp); 
+  cls(); 
+  Dsp_str("扫描信息已删除",5,4); 
+ break; 
+ } 
+ case '2': 
+  { 
+  cls(); 
+  flag=0; 
+  return; 
+  } 
+ default: 
+  { 
+  cls(); 
+  break; 
+  } 
+ } 
+ break; 
+ }  
+ case '3':{ 
+  cls();  
+ flag=0;  
+ break;  
+ }  
+ }/* end switch */  
+ }/* end while */  
+}  
+void IsUpLoadFile(void) 
+{ 
+UB buff1[100],buff2[100],buff3[150]; 
+ /* 判断数据文件是否存在 不存在建立 */ 
+ if(Is_file(FileDataUp)==1) 
+ {  
+ creat_file(FileDataUp); 
+ memset(buff1,0x00,sizeof(buff1)); 
+ memset(buff2,0x00,sizeof(buff2)); 
+ memset(buff3,0x00,sizeof(buff3)); 
+ sprintf(buff1,"%05d",PosId); 
+ space_str(buff1,20); 
+ strcat(buff1, "/xd/xa");  
+ dat_F_Write(FileDataUp,1,0,buff1,22);  
+ } 
+}
